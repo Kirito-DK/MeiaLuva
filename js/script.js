@@ -1,8 +1,8 @@
 // Configurações
 const CONFIG = {
-  sheetURL: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTCh8ynrVLz-2ir_EJI8YP4b1_jozi5tx-vD39JK7IS33Z-zJlsSiY2QkqSnfMfd1Bh-ouBIvFaOogf/pub?output=csv',
+  sheetURL: "https://docs.google.com/spreadsheets/d/e/2PACX-1vTCh8ynrVLz-2ir_EJI8YP4b1_jozi5tx-vD39JK7IS33Z-zJlsSiY2QkqSnfMfd1Bh-ouBIvFaOogf/pub?output=csv",
   updateInterval: 30000, // 30 segundos
-  cacheDuration: 30000, // 30 minutos
+  cacheDuration: 30000, // 30 minutos (em milissegundos)
   maxRetries: 3
 };
 
@@ -16,15 +16,18 @@ let cuponsCache = {
 // Função principal para carregar dados
 async function carregarDados() {
   try {
+    // Verificar cache válido
     if (cuponsCache.data && cuponsCache.lastUpdated &&
       (Date.now() - cuponsCache.lastUpdated) < CONFIG.cacheDuration) {
       mostrarCupons(cuponsCache.data);
       return;
     }
 
+    // Buscar novos dados
     const dados = await fetchWithRetry(CONFIG.sheetURL);
     const dadosParseados = parseCSV(dados);
 
+    // Verificar se os dados mudaram
     if (!dadosIguais(cuponsCache.data, dadosParseados)) {
       cuponsCache = {
         data: dadosParseados,
@@ -32,13 +35,16 @@ async function carregarDados() {
         etag: generateETag(dados)
       };
 
+      // Atualizar localStorage
       localStorage.setItem('cuponsCache', JSON.stringify(cuponsCache));
 
+      // Atualizar UI
       popularFiltro(dadosParseados);
       mostrarCupons(dadosParseados);
     }
   } catch (error) {
     console.error('Falha ao carregar dados:', error);
+    // Tentar recuperar do localStorage
     const localCache = localStorage.getItem('cuponsCache');
     if (localCache) {
       cuponsCache = JSON.parse(localCache);
@@ -94,6 +100,7 @@ function criarCard(cupom) {
   const div = document.createElement('div');
   div.className = 'card';
 
+  // Adicionar badge exclusivo aleatório
   if (Math.random() > 0.7) {
     const badge = document.createElement('div');
     badge.className = 'card-badge';
@@ -101,6 +108,7 @@ function criarCard(cupom) {
     div.appendChild(badge);
   }
 
+  // Código do cupom (clicável para copiar)
   const cupomCodigo = document.createElement('div');
   cupomCodigo.className = 'cupom-codigo';
   cupomCodigo.textContent = cupom["cupom"];
@@ -117,6 +125,7 @@ function criarCard(cupom) {
     });
   });
 
+  // Conteúdo do card
   div.innerHTML = `
     <h3>${cupom["nome da loja"]}</h3>
     <p><strong>Desconto:</strong> ${cupom["Desconto"]}</p>
@@ -125,6 +134,7 @@ function criarCard(cupom) {
   `;
   div.appendChild(cupomCodigo);
 
+  // Botão de acesso à oferta
   const link = document.createElement('a');
   link.className = 'btn';
   link.href = cupom["Link"];
@@ -135,16 +145,22 @@ function criarCard(cupom) {
   return div;
 }
 
-// Popular filtro de categorias
+// Popular filtro de categorias (FUNÇÃO CORRIGIDA)
 function popularFiltro(cupons) {
   if (!cupons || !Array.isArray(cupons)) return;
 
   const select = document.getElementById('category-filter');
-  while (select.options.length > 1) {
-    select.remove(1);
-  }
+  
+  // Limpar options mantendo apenas o primeiro ("Todos")
+  select.innerHTML = '<option value="Todos">Todos</option>';
 
-  const categorias = ["Todos", ...new Set(cupons.map(c => c["Categoria"]))];
+  // Obter categorias únicas, válidas e ordenadas
+  const categorias = [...new Set(cupons
+    .map(c => c["Categoria"])
+    .filter(categoria => categoria && categoria.trim() !== '')
+  )].sort();
+
+  // Adicionar opções ao select
   categorias.forEach(cat => {
     const opt = document.createElement("option");
     opt.value = cat;
@@ -152,32 +168,57 @@ function popularFiltro(cupons) {
     select.appendChild(opt);
   });
 
-  select.addEventListener('change', () => {
-    mostrarCupons(cupons, select.value);
+  // Remover event listeners anteriores para evitar duplicação
+  const newSelect = select.cloneNode(true);
+  select.parentNode.replaceChild(newSelect, select);
+
+  // Adicionar novo event listener
+  newSelect.addEventListener('change', (e) => {
+    mostrarCupons(cupons, e.target.value);
   });
 }
 
 // Mostrar cupons na tela
 function mostrarCupons(cupons, categoria = 'Todos') {
   const container = document.getElementById('cupons');
+  if (!container) return;
+
+  // Limpar container
   container.innerHTML = '';
 
-  cupons
-    .filter(c => categoria === 'Todos' || c["Categoria"] === categoria)
-    .forEach(c => container.appendChild(criarCard(c)));
+  // Filtrar e exibir cupons
+  const cuponsFiltrados = cupons.filter(c => 
+    categoria === 'Todos' || c["Categoria"] === categoria
+  );
+
+  if (cuponsFiltrados.length === 0) {
+    container.innerHTML = '<p class="sem-resultados">Nenhum cupom encontrado para esta categoria.</p>';
+    return;
+  }
+
+  cuponsFiltrados.forEach(c => container.appendChild(criarCard(c)));
 }
 
 // Inicialização
 document.addEventListener('DOMContentLoaded', () => {
+  // Carregar cache local se existir
   const localCache = localStorage.getItem('cuponsCache');
   if (localCache) {
-    cuponsCache = JSON.parse(localCache);
-    mostrarCupons(cuponsCache.data);
+    try {
+      cuponsCache = JSON.parse(localCache);
+      mostrarCupons(cuponsCache.data);
+      popularFiltro(cuponsCache.data);
+    } catch (e) {
+      console.error('Erro ao parsear cache local:', e);
+      localStorage.removeItem('cuponsCache');
+    }
   }
 
+  // Carregar dados inicial e configurar atualização periódica
   carregarDados();
   setInterval(carregarDados, CONFIG.updateInterval);
 
+  // Configurar dark mode toggle
   const darkModeToggle = document.getElementById('darkModeToggle');
   if (darkModeToggle) {
     darkModeToggle.addEventListener('click', () => {
@@ -187,15 +228,27 @@ document.addEventListener('DOMContentLoaded', () => {
         icon.classList.toggle('fa-moon');
         icon.classList.toggle('fa-sun');
       }
+      // Salvar preferência
+      localStorage.setItem('darkMode', document.body.classList.contains('dark-mode'));
     });
+
+    // Aplicar dark mode salvo
+    if (localStorage.getItem('darkMode') === 'true') {
+      document.body.classList.add('dark-mode');
+      const icon = darkModeToggle.querySelector('i');
+      if (icon) {
+        icon.classList.remove('fa-moon');
+        icon.classList.add('fa-sun');
+      }
+    }
   }
 });
 
 // Debug (opcional)
-console.log('Sistema inicializado');
+console.log('Sistema de cupons inicializado');
 setInterval(() => {
   console.log('Estado do cache:', {
     lastUpdated: cuponsCache.lastUpdated ? new Date(cuponsCache.lastUpdated).toLocaleTimeString() : null,
     count: cuponsCache.data ? cuponsCache.data.length : 0
   });
-}, 1000);
+}, 10000);

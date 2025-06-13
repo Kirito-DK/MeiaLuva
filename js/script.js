@@ -16,34 +16,29 @@ let cuponsCache = {
 // Função principal para carregar dados
 async function carregarDados() {
   try {
-    // Verificar cache válido primeiro
-    if (cuponsCache.data && cuponsCache.lastUpdated && 
-        (Date.now() - cuponsCache.lastUpdated) < CONFIG.cacheDuration) {
+    if (cuponsCache.data && cuponsCache.lastUpdated &&
+      (Date.now() - cuponsCache.lastUpdated) < CONFIG.cacheDuration) {
       mostrarCupons(cuponsCache.data);
       return;
     }
 
-    // Carregar da planilha com tratamento de erro
     const dados = await fetchWithRetry(CONFIG.sheetURL);
     const dadosParseados = parseCSV(dados);
-    
-    // Verificar se houve mudanças significativas
+
     if (!dadosIguais(cuponsCache.data, dadosParseados)) {
       cuponsCache = {
         data: dadosParseados,
         lastUpdated: Date.now(),
         etag: generateETag(dados)
       };
-      
-      // Salvar no localStorage
+
       localStorage.setItem('cuponsCache', JSON.stringify(cuponsCache));
-      
+
       popularFiltro(dadosParseados);
       mostrarCupons(dadosParseados);
     }
   } catch (error) {
     console.error('Falha ao carregar dados:', error);
-    // Tentar usar cache do localStorage se disponível
     const localCache = localStorage.getItem('cuponsCache');
     if (localCache) {
       cuponsCache = JSON.parse(localCache);
@@ -57,11 +52,9 @@ async function fetchWithRetry(url, retries = CONFIG.maxRetries) {
   try {
     const response = await fetch(url, {
       cache: 'no-cache',
-      headers: {
-        'Cache-Control': 'no-cache'
-      }
+      headers: { 'Cache-Control': 'no-cache' }
     });
-    
+
     if (!response.ok) throw new Error('Falha na rede');
     return await response.text();
   } catch (error) {
@@ -75,11 +68,11 @@ async function fetchWithRetry(url, retries = CONFIG.maxRetries) {
 function parseCSV(csvText) {
   const [headerLine, ...lines] = csvText.trim().split('\n');
   const headers = headerLine.split(',').map(h => h.trim());
-  
+
   return lines.map(line => {
-    const values = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || [];
+    const values = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.trim());
     return headers.reduce((obj, h, i) => {
-      obj[h] = (values[i] || '').replace(/(^"|"$)/g, '').trim();
+      obj[h] = (values[i] || '').replace(/^"|"$/g, '').trim();
       return obj;
     }, {});
   });
@@ -144,17 +137,14 @@ function criarCard(cupom) {
 
 // Popular filtro de categorias
 function popularFiltro(cupons) {
+  if (!cupons || !Array.isArray(cupons)) return;
+
   const select = document.getElementById('category-filter');
-  
-  // Limpar opções existentes (exceto a primeira)
   while (select.options.length > 1) {
     select.remove(1);
   }
 
-  // Obter categorias únicas
   const categorias = ["Todos", ...new Set(cupons.map(c => c["Categoria"]))];
-  
-  // Adicionar opções
   categorias.forEach(cat => {
     const opt = document.createElement("option");
     opt.value = cat;
@@ -162,7 +152,6 @@ function popularFiltro(cupons) {
     select.appendChild(opt);
   });
 
-  // Configurar evento de change
   select.addEventListener('change', () => {
     mostrarCupons(cupons, select.value);
   });
@@ -172,7 +161,7 @@ function popularFiltro(cupons) {
 function mostrarCupons(cupons, categoria = 'Todos') {
   const container = document.getElementById('cupons');
   container.innerHTML = '';
-  
+
   cupons
     .filter(c => categoria === 'Todos' || c["Categoria"] === categoria)
     .forEach(c => container.appendChild(criarCard(c)));
@@ -180,25 +169,26 @@ function mostrarCupons(cupons, categoria = 'Todos') {
 
 // Inicialização
 document.addEventListener('DOMContentLoaded', () => {
-  // Carregar cache inicial se existir
   const localCache = localStorage.getItem('cuponsCache');
   if (localCache) {
     cuponsCache = JSON.parse(localCache);
     mostrarCupons(cuponsCache.data);
   }
-  
-  // Carregar dados e configurar intervalo
+
   carregarDados();
   setInterval(carregarDados, CONFIG.updateInterval);
-  
-  // Configurar dark mode toggle
+
   const darkModeToggle = document.getElementById('darkModeToggle');
-  darkModeToggle.addEventListener('click', () => {
-    document.body.classList.toggle('dark-mode');
-    const icon = darkModeToggle.querySelector('i');
-    icon.classList.toggle('fa-moon');
-    icon.classList.toggle('fa-sun');
-  });
+  if (darkModeToggle) {
+    darkModeToggle.addEventListener('click', () => {
+      document.body.classList.toggle('dark-mode');
+      const icon = darkModeToggle.querySelector('i');
+      if (icon) {
+        icon.classList.toggle('fa-moon');
+        icon.classList.toggle('fa-sun');
+      }
+    });
+  }
 });
 
 // Debug (opcional)

@@ -198,4 +198,4 @@ setInterval(() => {
     lastUpdated: cuponsCache.lastUpdated ? new Date(cuponsCache.lastUpdated).toLocaleTimeString() : null,
     count: cuponsCache.data ? cuponsCache.data.length : 0
   });
-}, 10000);
+}, 1000);

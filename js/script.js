@@ -2,7 +2,7 @@
 const CONFIG = {
   sheetURL: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTCh8ynrVLz-2ir_EJI8YP4b1_jozi5tx-vD39JK7IS33Z-zJlsSiY2QkqSnfMfd1Bh-ouBIvFaOogf/pub?output=csv',
   updateInterval: 30000, // 30 segundos
-  cacheDuration: 1800000, // 30 minutos
+  cacheDuration: 30000, // 30 minutos
   maxRetries: 3
 };
 
